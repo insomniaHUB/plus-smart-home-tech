@@ -1,39 +1,50 @@
 package ru.practicum.kafka;
 
+import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecordBase;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.core.ProducerFactory;
 import serializer.AvroSerializer;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.time.Duration;
+import java.util.Properties;
 
+@Slf4j
 @Configuration
 @EnableConfigurationProperties(KafkaTopicsProperties.class)
 public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
     private String bootstrapServers;
+    private Producer<String, SpecificRecordBase> producer;
 
     @Bean
-    public ProducerFactory<String, SpecificRecordBase> producerFactory() {
-        Map<String, Object> configProps = new HashMap<>();
-        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, AvroSerializer.class);
+    public Producer<String, SpecificRecordBase> kafkaProducer() {
+        Properties properties = new Properties();
+        properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, AvroSerializer.class.getName());
 
-        return new DefaultKafkaProducerFactory<>(configProps);
+        this.producer = new KafkaProducer<>(properties);
+        return producer;
     }
 
-    @Bean
-    public KafkaTemplate<String, SpecificRecordBase> kafkaTemplate(
-            ProducerFactory<String, SpecificRecordBase> producerFactory) {
-        return new KafkaTemplate<>(producerFactory);
+    @PreDestroy
+    public void shutdown() {
+        if (producer != null) {
+            try {
+                producer.flush();
+                producer.close(Duration.ofSeconds(5));
+                log.info("KafkaProducer успешно закрыт");
+            } catch (Exception e) {
+                log.error("Ошибка при закрытии KafkaProducer", e);
+            }
+        }
     }
 }
