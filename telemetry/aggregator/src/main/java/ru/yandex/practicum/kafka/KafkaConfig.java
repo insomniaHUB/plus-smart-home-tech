@@ -11,6 +11,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.util.backoff.FixedBackOff;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 import serializer.AvroSerializer;
 
@@ -29,15 +32,12 @@ public class KafkaConfig {
     @Bean
     public ConsumerFactory<String, SensorEventAvro> consumerFactory() {
         Map<String, Object> configProperties = new HashMap<>();
-
         configProperties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         configProperties.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         configProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         configProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SensorEventDeserializer.class);
         configProperties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        configProperties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
-        configProperties.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, 1000);
-
+        configProperties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         return new DefaultKafkaConsumerFactory<>(configProperties);
     }
 
@@ -45,23 +45,21 @@ public class KafkaConfig {
     public ConcurrentKafkaListenerContainerFactory<String, SensorEventAvro> kafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, SensorEventAvro> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
-
         factory.setConsumerFactory(consumerFactory());
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+        factory.setCommonErrorHandler(new DefaultErrorHandler(new FixedBackOff(1000L, 3L)));
         return factory;
     }
 
     @Bean
     public ProducerFactory<String, SpecificRecordBase> producerFactory() {
         Map<String, Object> props = new HashMap<>();
-
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, AvroSerializer.class);
-
         props.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);
         props.put(ProducerConfig.LINGER_MS_CONFIG, 5);
         props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 33554432);
-
         return new DefaultKafkaProducerFactory<>(props);
     }
 

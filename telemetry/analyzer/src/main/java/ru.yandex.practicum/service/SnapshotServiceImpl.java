@@ -42,7 +42,7 @@ public class SnapshotServiceImpl implements SnapshotService {
         for (Scenario scenario : scenarios) {
             if (checkScenario(scenario, sensorsState)) {
                 log.info("Scenario '{}' matched for hub {}", scenario.getName(), hubId);
-                executeActions(scenario, hubId, sensorsState);
+                executeActions(scenario, hubId);
             } else {
                 log.debug("Scenario '{}' did not match", scenario.getName());
             }
@@ -50,6 +50,11 @@ public class SnapshotServiceImpl implements SnapshotService {
     }
 
     private boolean checkScenario(Scenario scenario, Map<String, SensorStateAvro> sensorsState) {
+        if (scenario.getConditions() == null || scenario.getConditions().isEmpty()) {
+            log.debug("Scenario '{}' has no conditions, skipping", scenario.getName());
+            return false;
+        }
+
         for (ScenarioCondition sc : scenario.getConditions()) {
             String sensorId = sc.getSensor().getId();
             SensorStateAvro state = sensorsState.get(sensorId);
@@ -129,7 +134,7 @@ public class SnapshotServiceImpl implements SnapshotService {
         };
     }
 
-    private void executeActions(Scenario scenario, String hubId, Map<String, SensorStateAvro> sensorsState) {
+    private void executeActions(Scenario scenario, String hubId) {
         for (ScenarioAction sa : scenario.getActions()) {
             Sensor sensor = sa.getSensor();
             Action action = sa.getAction();
@@ -149,6 +154,8 @@ public class SnapshotServiceImpl implements SnapshotService {
             } catch (Exception e) {
                 log.error("Failed to execute action for scenario '{}': {}",
                         scenario.getName(), e.getMessage());
+                throw new RuntimeException(
+                        "Failed to execute action for scenario '" + scenario.getName() + "'", e);
             }
         }
     }

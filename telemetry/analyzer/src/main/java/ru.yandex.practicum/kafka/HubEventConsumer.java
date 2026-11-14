@@ -2,6 +2,7 @@ package ru.yandex.practicum.kafka;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import deserializer.HubEventDeserializer;
 import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
@@ -9,6 +10,7 @@ import ru.yandex.practicum.service.HubEventService;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Properties;
 
 @Slf4j
@@ -45,7 +47,11 @@ public class HubEventConsumer implements Runnable {
                 for (ConsumerRecord<String, HubEventAvro> record : records) {
                     HubEventAvro event = record.value();
                     hubEventService.handle(event);
-                    consumer.commitSync();
+
+                    consumer.commitSync(Map.of(
+                            new TopicPartition(record.topic(), record.partition()),
+                            new OffsetAndMetadata(record.offset() + 1)
+                    ));
                 }
             }
         } catch (Exception e) {

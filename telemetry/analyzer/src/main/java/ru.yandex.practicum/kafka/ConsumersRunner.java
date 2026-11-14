@@ -2,19 +2,25 @@ package ru.yandex.practicum.kafka;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.service.HubEventService;
 import ru.yandex.practicum.service.SnapshotService;
 
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class ConsumersRunner {
 
     private final HubEventService hubEventService;
+    private final SnapshotService snapshotService;
+
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
@@ -32,39 +38,40 @@ public class ConsumersRunner {
 
     private SnapshotConsumer snapshotConsumer;
     private HubEventConsumer hubEventConsumer;
-    private final CountDownLatch shutdownLatch = new CountDownLatch(1);
-    private final SnapshotService snapshotService;
-
-    public ConsumersRunner(HubEventService hubEventService, SnapshotService snapshotService) {
-        this.hubEventService = hubEventService;
-        this.snapshotService = snapshotService;
-    }
+    private ExecutorService executorService;
 
     @PostConstruct
     public void start() {
-        log.info("Starting Kafka consumers...");
-
         snapshotConsumer = new SnapshotConsumer(bootstrapServers, snapshotsTopic, snapshotGroupId, snapshotService);
         hubEventConsumer = new HubEventConsumer(bootstrapServers, hubsTopic, hubGroupId, hubEventService);
 
-        Thread.ofVirtual().name("snapshot-thread").start(snapshotConsumer);
-        Thread.ofVirtual().name("hub-thread").start(hubEventConsumer);
+        executorService = Executors.newFixedThreadPool(2);
+        executorService.submit(snapshotConsumer);
+        executorService.submit(hubEventConsumer);
 
         log.info("Kafka consumers started successfully");
-
-        new Thread(() -> {
-            try {
-                shutdownLatch.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }, "main-keeper").start();
-
     }
 
     @PreDestroy
     public void stop() {
-        if (snapshotConsumer != null) snapshotConsumer.stop();
-        if (hubEventConsumer != null) hubEventConsumer.stop();
+        if (snapshotConsumer != null) {
+            snapshotConsumer.stop();
+        }
+        if (hubEventConsumer != null) {
+            hubEventConsumer.stop();
+        }
+
+        if (executorService != null) {
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        log.info("Kafka consumers stopped");
     }
 }
