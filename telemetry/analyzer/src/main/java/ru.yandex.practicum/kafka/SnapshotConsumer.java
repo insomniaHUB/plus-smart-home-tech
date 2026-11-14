@@ -2,6 +2,7 @@ package ru.yandex.practicum.kafka;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import deserializer.SensorsSnapshotDeserializer;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
@@ -9,6 +10,7 @@ import ru.yandex.practicum.service.SnapshotService;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Properties;
 
 @Slf4j
@@ -44,15 +46,26 @@ public class SnapshotConsumer implements Runnable {
             while (running) {
                 ConsumerRecords<String, SensorsSnapshotAvro> records = consumer.poll(Duration.ofMillis(100));
                 for (ConsumerRecord<String, SensorsSnapshotAvro> record : records) {
-                    SensorsSnapshotAvro snapshot = record.value();
+                    TopicPartition partition = new TopicPartition(record.topic(), record.partition());
+                    try {
+                        SensorsSnapshotAvro snapshot = record.value();
 
-                    log.info("Snapshot received: hubId={}, sensors={}",
-                            snapshot.getHubId(),
-                            snapshot.getSensorsState().keySet());
+                        log.info("Snapshot received: hubId={}, sensors={}",
+                                snapshot.getHubId(),
+                                snapshot.getSensorsState().keySet());
 
-                    snapshotService.analyzeSnapshot(snapshot);
+                        snapshotService.analyzeSnapshot(snapshot);
 
-                    consumer.commitSync();
+                        consumer.commitSync(Map.of(
+                                partition,
+                                new OffsetAndMetadata(record.offset() + 1)
+                        ));
+                    } catch (Exception e) {
+                        log.error("Error processing snapshot at partition={}, offset={}. Will retry.",
+                                record.partition(), record.offset(), e);
+                        consumer.seek(partition, record.offset());
+                        break;
+                    }
                 }
             }
         } catch (Exception e) {
