@@ -3,22 +3,18 @@ package ru.yandex.practicum.kafka;
 import deserializer.SensorEventDeserializer;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
-import org.springframework.kafka.core.*;
-import org.springframework.kafka.listener.ContainerProperties;
-import org.springframework.kafka.listener.DefaultErrorHandler;
-import org.springframework.util.backoff.FixedBackOff;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 import serializer.AvroSerializer;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Properties;
 
 @Configuration
 public class KafkaConfig {
@@ -30,41 +26,26 @@ public class KafkaConfig {
     private String groupId;
 
     @Bean
-    public ConsumerFactory<String, SensorEventAvro> consumerFactory() {
-        Map<String, Object> configProperties = new HashMap<>();
-        configProperties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        configProperties.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
-        configProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        configProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SensorEventDeserializer.class);
-        configProperties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        configProperties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
-        return new DefaultKafkaConsumerFactory<>(configProperties);
+    public KafkaConsumer<String, SensorEventAvro> kafkaConsumer() {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SensorEventDeserializer.class);
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        return new KafkaConsumer<>(props);
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, SensorEventAvro> kafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, SensorEventAvro> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(consumerFactory());
-        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
-        factory.setCommonErrorHandler(new DefaultErrorHandler(new FixedBackOff(1000L, 3L)));
-        return factory;
-    }
-
-    @Bean
-    public ProducerFactory<String, SpecificRecordBase> producerFactory() {
-        Map<String, Object> props = new HashMap<>();
+    public KafkaProducer<String, SpecificRecordBase> kafkaProducer() {
+        Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, AvroSerializer.class);
         props.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);
         props.put(ProducerConfig.LINGER_MS_CONFIG, 5);
         props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 33554432);
-        return new DefaultKafkaProducerFactory<>(props);
-    }
-
-    @Bean
-    public KafkaTemplate<String, SpecificRecordBase> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+        return new KafkaProducer<>(props);
     }
 }
