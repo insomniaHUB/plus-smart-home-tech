@@ -69,6 +69,14 @@ public class InventoryServiceImpl implements InventoryService {
                 request.productId(), request.quantity());
 
         InventoryItem item = findByProductIdOrThrow(request.productId());
+        if (request.quantity() < item.getReservedQuantity()) {
+            log.warn("Cannot set quantity below reserved: productId={}, newQuantity={}, reserved={}",
+                    request.productId(), request.quantity(), item.getReservedQuantity());
+            throw new InsufficientStockException(String.format(
+                    "New quantity (%d) cannot be less than reserved quantity (%d) for productId=%d",
+                    request.quantity(), item.getReservedQuantity(), request.productId()));
+        }
+
         int oldQuantity = item.getQuantity();
         item.setQuantity(request.quantity());
 
