@@ -2,7 +2,6 @@ package ru.yandex.practicum.order.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -75,7 +74,6 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal totalPrice = BigDecimal.ZERO;
         for (OrderItemRequest itemRequest : request.items()) {
             ProductResponse product = getProductFromCatalog(restClient, itemRequest.productId());
-            reserveInInventory(restClient, itemRequest.productId(), itemRequest.quantity());
 
             OrderItem item = new OrderItem();
             item.setProductId(product.id());
@@ -105,22 +103,6 @@ public class OrderServiceImpl implements OrderService {
                     throw new NotFoundException("Product not found: id=" + productId);
                 })
                 .body(ProductResponse.class);
-    }
-
-    private void reserveInInventory(RestClient restClient, Long productId, Integer quantity) {
-        restClient.post()
-                .uri("http://inventory-service/api/inventory/reserve")
-                .body(new ReserveRequest(productId, quantity))
-                .retrieve()
-                .onStatus(status -> status.value() == HttpStatus.NOT_FOUND.value(), (req, res) -> {
-                    log.warn("Inventory record not found: productId={}", productId);
-                    throw new NotFoundException("Inventory record not found: productId=" + productId);
-                })
-                .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
-                    log.warn("Stock reservation failed: productId={}, quantity={}", productId, quantity);
-                    throw new IllegalStateException("Insufficient stock for productId=" + productId);
-                })
-                .toBodilessEntity();
     }
 
     private Order findOrThrow(Long id) {
@@ -158,6 +140,4 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private record ProductResponse(Long id, String name, BigDecimal price) {}
-
-    private record ReserveRequest(Long productId, Integer quantity) {}
 }
