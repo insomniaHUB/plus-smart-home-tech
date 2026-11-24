@@ -2,8 +2,11 @@ package ru.yandex.practicum.order.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 import ru.yandex.practicum.order.dto.CreateOrderRequest;
 import ru.yandex.practicum.order.dto.OrderDto;
 import ru.yandex.practicum.order.dto.OrderItemDto;
@@ -25,6 +28,7 @@ import java.util.List;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
+    private final RestClient.Builder restClientBuilder;
 
     @Override
     public List<OrderDto> getAll() {
@@ -59,6 +63,8 @@ public class OrderServiceImpl implements OrderService {
         log.info("Creating order: email={}, itemsCount={}",
                 request.customerEmail(), request.items().size());
 
+        RestClient restClient = restClientBuilder.build();
+
         Order order = new Order();
         order.setCustomerName(request.customerName());
         order.setCustomerEmail(request.customerEmail());
@@ -68,14 +74,17 @@ public class OrderServiceImpl implements OrderService {
 
         BigDecimal totalPrice = BigDecimal.ZERO;
         for (OrderItemRequest itemRequest : request.items()) {
+            ProductResponse product = getProductFromCatalog(restClient, itemRequest.productId());
+            reserveInInventory(restClient, itemRequest.productId(), itemRequest.quantity());
+
             OrderItem item = new OrderItem();
-            item.setProductId(itemRequest.productId());
-            item.setProductName(itemRequest.productName());
+            item.setProductId(product.id());
+            item.setProductName(product.name());
             item.setQuantity(itemRequest.quantity());
-            item.setPrice(itemRequest.price());
+            item.setPrice(product.price());
             order.addItem(item);
 
-            BigDecimal itemCost = itemRequest.price()
+            BigDecimal itemCost = product.price()
                     .multiply(BigDecimal.valueOf(itemRequest.quantity()));
             totalPrice = totalPrice.add(itemCost);
         }
@@ -85,6 +94,33 @@ public class OrderServiceImpl implements OrderService {
         log.info("Order created: id={}, email={}, totalPrice={}",
                 saved.getId(), saved.getCustomerEmail(), saved.getTotalPrice());
         return toDto(saved);
+    }
+
+    private ProductResponse getProductFromCatalog(RestClient restClient, Long productId) {
+        return restClient.get()
+                .uri("http://product-service/api/products/{id}", productId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
+                    log.warn("Product not found in catalog: productId={}", productId);
+                    throw new NotFoundException("Product not found: id=" + productId);
+                })
+                .body(ProductResponse.class);
+    }
+
+    private void reserveInInventory(RestClient restClient, Long productId, Integer quantity) {
+        restClient.post()
+                .uri("http://inventory-service/api/inventory/reserve")
+                .body(new ReserveRequest(productId, quantity))
+                .retrieve()
+                .onStatus(status -> status.value() == HttpStatus.NOT_FOUND.value(), (req, res) -> {
+                    log.warn("Inventory record not found: productId={}", productId);
+                    throw new NotFoundException("Inventory record not found: productId=" + productId);
+                })
+                .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
+                    log.warn("Stock reservation failed: productId={}, quantity={}", productId, quantity);
+                    throw new IllegalStateException("Insufficient stock for productId=" + productId);
+                })
+                .toBodilessEntity();
     }
 
     private Order findOrThrow(Long id) {
@@ -120,4 +156,8 @@ public class OrderServiceImpl implements OrderService {
                 item.getQuantity(),
                 item.getPrice());
     }
+
+    private record ProductResponse(Long id, String name, BigDecimal price) {}
+
+    private record ReserveRequest(Long productId, Integer quantity) {}
 }
