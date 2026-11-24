@@ -2,10 +2,8 @@ package ru.yandex.practicum.order.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClient;
 import ru.yandex.practicum.order.dto.CreateOrderRequest;
 import ru.yandex.practicum.order.dto.OrderDto;
 import ru.yandex.practicum.order.dto.OrderItemDto;
@@ -27,7 +25,6 @@ import java.util.List;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
-    private final RestClient.Builder restClientBuilder;
 
     @Override
     public List<OrderDto> getAll() {
@@ -62,8 +59,6 @@ public class OrderServiceImpl implements OrderService {
         log.info("Creating order: email={}, itemsCount={}",
                 request.customerEmail(), request.items().size());
 
-        RestClient restClient = restClientBuilder.build();
-
         Order order = new Order();
         order.setCustomerName(request.customerName());
         order.setCustomerEmail(request.customerEmail());
@@ -73,16 +68,14 @@ public class OrderServiceImpl implements OrderService {
 
         BigDecimal totalPrice = BigDecimal.ZERO;
         for (OrderItemRequest itemRequest : request.items()) {
-            ProductResponse product = getProductFromCatalog(restClient, itemRequest.productId());
-
             OrderItem item = new OrderItem();
-            item.setProductId(product.id());
-            item.setProductName(product.name());
+            item.setProductId(itemRequest.productId());
+            item.setProductName(itemRequest.productName());
             item.setQuantity(itemRequest.quantity());
-            item.setPrice(product.price());
+            item.setPrice(itemRequest.price());
             order.addItem(item);
 
-            BigDecimal itemCost = product.price()
+            BigDecimal itemCost = itemRequest.price()
                     .multiply(BigDecimal.valueOf(itemRequest.quantity()));
             totalPrice = totalPrice.add(itemCost);
         }
@@ -92,17 +85,6 @@ public class OrderServiceImpl implements OrderService {
         log.info("Order created: id={}, email={}, totalPrice={}",
                 saved.getId(), saved.getCustomerEmail(), saved.getTotalPrice());
         return toDto(saved);
-    }
-
-    private ProductResponse getProductFromCatalog(RestClient restClient, Long productId) {
-        return restClient.get()
-                .uri("http://product-service/api/products/{id}", productId)
-                .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
-                    log.warn("Product not found in catalog: productId={}", productId);
-                    throw new NotFoundException("Product not found: id=" + productId);
-                })
-                .body(ProductResponse.class);
     }
 
     private Order findOrThrow(Long id) {
@@ -138,6 +120,4 @@ public class OrderServiceImpl implements OrderService {
                 item.getQuantity(),
                 item.getPrice());
     }
-
-    private record ProductResponse(Long id, String name, BigDecimal price) {}
 }
