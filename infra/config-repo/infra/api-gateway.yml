@@ -5,11 +5,11 @@ app:
   security:
     users:
       - username: ivan
-        password: "{bcrypt}$2a$10$EqKcp1WFKVQISheBxMdyoOKy6rRjPM5v6yGkOw8wJzB6vQrHv2pGy"
+        password: "{bcrypt}$2a$10$B3QsDcHLL4sEiBJ9lZ4DmO1SlDEzr8WXHc7WApB6phXze7COldUYq"
         roles:
           - USER
       - username: anna
-        password: "{bcrypt}$2a$10$rD4yM5yYxQ7K9e4JQwZJQOe4JQwZJQe4JQwZJQe4JQwZJQe4JQwZJQe4JQwZJ"
+        password: "{bcrypt}$2a$10$CnhxUFd1u4TqrurfDQyeQeUm86DAmjvjQbUWQw0cAJqopAiThT/Qa"
         roles:
           - USER
           - ADMIN

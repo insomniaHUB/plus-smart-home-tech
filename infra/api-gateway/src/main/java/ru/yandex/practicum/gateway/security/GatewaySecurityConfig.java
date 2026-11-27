@@ -79,14 +79,12 @@ public class GatewaySecurityConfig {
     }
 
     @Bean
-    public ReactiveUserDetailsService userDetailsService(PasswordEncoder encoder) {
+    public ReactiveUserDetailsService userDetailsService() {
         List<SecurityProperties.User> configuredUsers = securityProperties.getUsers();
 
         if (configuredUsers == null || configuredUsers.isEmpty()) {
-            log.warn("No users configured via app.security.users, using fallback users");
-            configuredUsers = List.of(
-                    createUser("ivan", "{noop}ivan", List.of("USER")),
-                    createUser("anna", "{noop}anna", List.of("USER", "ADMIN"))
+            throw new IllegalStateException(
+                    "Security users are not configured. Please define 'app.security.users' in configuration."
             );
         }
 
@@ -102,13 +100,5 @@ public class GatewaySecurityConfig {
                 users.stream().map(UserDetails::getUsername).toList());
 
         return new MapReactiveUserDetailsService(users);
-    }
-
-    private SecurityProperties.User createUser(String username, String password, List<String> roles) {
-        SecurityProperties.User user = new SecurityProperties.User();
-        user.setUsername(username);
-        user.setPassword(password);
-        user.setRoles(roles);
-        return user;
     }
 }
